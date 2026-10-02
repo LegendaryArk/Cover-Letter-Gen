@@ -74,10 +74,19 @@ def _fill_values(slots: list[template.Slot], job: Job, settings: storage.Setting
     return values
 
 
-def _render_pdf(job: Job) -> bytes:
+def _resume_pdf_or_400() -> bytes:
+    pdf = storage.load_resume_pdf()
+    if pdf is None:
+        raise HTTPException(400, "To attach your resume, upload it as a PDF or .docx in Setup.")
+    return pdf
+
+
+def _render_pdf(job: Job, resume_pdf: bytes | None = None) -> bytes:
+    """Cover letter PDF, with the resume appended after it when resume_pdf is given."""
     data, slots, _ = _template_or_400()
     docx = template.fill_bytes(data, _fill_values(slots, job, storage.load_settings()))
-    return export.docx_to_pdf(docx)
+    letter = export.docx_to_pdf(docx)
+    return export.merge_pdfs(letter, resume_pdf) if resume_pdf else letter
 
 
 def _extract_text(filename: str, data: bytes) -> str:
@@ -102,6 +111,7 @@ def get_state():
         "slots": slots,
         "auto_fields": sorted(_auto_fields(storage.load_settings())),
         "has_resume": resume is not None,
+        "has_resume_pdf": storage.RESUME_PDF_PATH.exists(),
         "resume_preview": (resume or "")[:300],
     }
 
@@ -121,17 +131,30 @@ async def upload_template(file: UploadFile):
 
 @app.post("/api/resume")
 async def upload_resume(file: UploadFile):
-    text = _extract_text(file.filename, await file.read()).strip()
+    data = await file.read()
+    name = file.filename.lower()
+    text = _extract_text(name, data).strip()
     if not text:
         raise HTTPException(400, "Couldn't extract any text from that resume.")
+    if name.endswith(".pdf"):
+        pdf = data
+    elif name.endswith(".docx"):
+        try:
+            pdf = await asyncio.to_thread(export.docx_to_pdf, data)
+        except RuntimeError as e:
+            raise HTTPException(500, str(e))
+    else:
+        pdf = None  # plain text can be used as context but not attached
     storage.save_resume(text)
-    return {"has_resume": True, "resume_preview": text[:300]}
+    storage.save_resume_pdf(pdf)
+    return {"has_resume": True, "has_resume_pdf": pdf is not None, "resume_preview": text[:300]}
 
 
 @app.put("/api/settings")
 def put_settings(settings: storage.Settings):
     try:
         export.build_filename(settings, "Company", "Role")
+        export.build_filename(settings, "Company", "Role", combined=True)
     except (KeyError, IndexError, ValueError) as e:
         raise HTTPException(400, f"Bad filename pattern: {e}. Use {{first}}, {{last}}, {{company}}, {{role}}.")
     storage.save_settings(settings)
@@ -259,9 +282,10 @@ async def regenerate_slot(req: RegenerateRequest):
 # ---------------------------------------------------------------- export
 
 @app.post("/api/preview")
-async def preview(job: Job):
+async def preview(job: Job, attach_resume: bool = False):
+    resume_pdf = _resume_pdf_or_400() if attach_resume else None
     try:
-        pdf = await asyncio.to_thread(_render_pdf, job)
+        pdf = await asyncio.to_thread(_render_pdf, job, resume_pdf)
     except RuntimeError as e:
         raise HTTPException(500, str(e))
     return Response(pdf, media_type="application/pdf")
@@ -269,20 +293,23 @@ async def preview(job: Job):
 
 class ExportRequest(BaseModel):
     jobs: list[Job]
+    attach_resume: bool = False
 
 
 @app.post("/api/export")
 async def export_letters(req: ExportRequest):
     settings = storage.load_settings()
+    resume_pdf = _resume_pdf_or_400() if req.attach_resume else None
     results, used = [], set()
     for job in req.jobs:
-        name = export.build_filename(settings, job.company_short or job.company, job.role_short or job.role)
+        name = export.build_filename(settings, job.company_short or job.company, job.role_short or job.role,
+                                     combined=req.attach_resume)
         stem, n = name[:-4], 2
         while name in used:  # two jobs with the same company/role in one batch
             name, n = f"{stem}_{n}.pdf", n + 1
         used.add(name)
         try:
-            pdf = await asyncio.to_thread(_render_pdf, job)
+            pdf = await asyncio.to_thread(_render_pdf, job, resume_pdf)
         except RuntimeError as e:
             raise HTTPException(500, str(e))
         (storage.OUTPUT_DIR / name).write_bytes(pdf)

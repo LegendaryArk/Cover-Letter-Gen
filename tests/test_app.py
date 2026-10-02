@@ -74,6 +74,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "OUTPUT_DIR", tmp_path / "output")
     monkeypatch.setattr(storage, "TEMPLATE_PATH", tmp_path / "data" / "template.docx")
     monkeypatch.setattr(storage, "RESUME_PATH", tmp_path / "data" / "resume.txt")
+    monkeypatch.setattr(storage, "RESUME_PDF_PATH", tmp_path / "data" / "resume.pdf")
     monkeypatch.setattr(storage, "SETTINGS_PATH", tmp_path / "data" / "settings.json")
     monkeypatch.setattr(export, "DATA_DIR", tmp_path / "data")
     storage.ensure_dirs()
@@ -147,6 +148,65 @@ def test_regenerate_slot_passes_hint_and_previous(client):
 
 def test_path_traversal_blocked(client):
     assert client.get("/api/files/..%2Fdata%2Fsettings.json").status_code == 404
+
+
+def make_pdf(text: str, pages: int = 1) -> bytes:
+    """Minimal text PDF via LibreOffice, so pypdf can read the text back."""
+    doc = Document()
+    for i in range(pages):
+        doc.add_paragraph(f"{text} page {i + 1}")
+        if i < pages - 1:
+            doc.add_page_break()
+    buf = io.BytesIO()
+    doc.save(buf)
+    return export.docx_to_pdf(buf.getvalue())
+
+
+def test_export_with_resume_attached(client):
+    if not _has_soffice():
+        pytest.skip("LibreOffice not installed")
+    from pypdf import PdfReader
+    client.post("/api/template", files={"file": ("t.docx", make_template())})
+    client.put("/api/settings", json={**storage.Settings().model_dump(), "first_name": "Noah", "last_name": "Sun"})
+    job = {"jd": "x", "company_short": "Stripe", "role_short": "Backend Engineer", "written": {"w1": "Letter body"}}
+
+    # Text-only resume: usable as context but can't be attached.
+    r = client.post("/api/resume", files={"file": ("resume.txt", b"Resume text")})
+    assert r.json()["has_resume_pdf"] is False
+    assert client.post("/api/export", json={"jobs": [job], "attach_resume": True}).status_code == 400
+
+    r = client.post("/api/resume", files={"file": ("resume.pdf", make_pdf("RESUME CONTENT", pages=2))})
+    assert r.json()["has_resume_pdf"] is True
+    assert client.get("/api/state").json()["has_resume_pdf"] is True
+
+    r = client.post("/api/export", json={"jobs": [job], "attach_resume": True})
+    assert r.status_code == 200, r.text
+    f = r.json()["files"][0]
+    assert f["filename"] == "Noah_Sun_CoverLetter_Resume_Stripe_Backend_Engineer.pdf"
+    pages = PdfReader(io.BytesIO(client.get(f["url"]).content)).pages
+    assert len(pages) == 3
+    assert "Letter body" in pages[0].extract_text()
+    assert "RESUME CONTENT page 1" in pages[1].extract_text()
+    assert "RESUME CONTENT page 2" in pages[2].extract_text()
+
+    # Preview honours the toggle too; plain export is unchanged.
+    prev = client.post("/api/preview?attach_resume=true", json=job).content
+    assert len(PdfReader(io.BytesIO(prev)).pages) == 3
+    plain = client.post("/api/export", json={"jobs": [job]}).json()["files"][0]["filename"]
+    assert plain == "Noah_Sun_CoverLetter_Stripe_Backend_Engineer.pdf"
+
+
+def test_docx_resume_converted_and_text_resume_clears_pdf(client):
+    if not _has_soffice():
+        pytest.skip("LibreOffice not installed")
+    doc = Document()
+    doc.add_paragraph("Docx resume")
+    buf = io.BytesIO()
+    doc.save(buf)
+    assert client.post("/api/resume", files={"file": ("cv.docx", buf.getvalue())}).json()["has_resume_pdf"]
+    assert storage.RESUME_PDF_PATH.read_bytes().startswith(b"%PDF")
+    client.post("/api/resume", files={"file": ("cv.txt", b"New text resume")})
+    assert not storage.RESUME_PDF_PATH.exists()
 
 
 def _has_soffice():

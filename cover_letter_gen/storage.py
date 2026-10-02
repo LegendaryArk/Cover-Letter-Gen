@@ -12,6 +12,7 @@ DATA_DIR = ROOT / "data"
 OUTPUT_DIR = ROOT / "output"
 TEMPLATE_PATH = DATA_DIR / "template.docx"
 RESUME_PATH = DATA_DIR / "resume.txt"
+RESUME_PDF_PATH = DATA_DIR / "resume.pdf"  # original resume, for attaching to exports
 SETTINGS_PATH = DATA_DIR / "settings.json"
 
 
@@ -19,8 +20,11 @@ class Settings(BaseModel):
     first_name: str = ""
     last_name: str = ""
     filename_pattern: str = "{first}_{last}_CoverLetter_{company}_{role}"
+    # Used when the resume is attached after the cover letter in one PDF.
+    combined_filename_pattern: str = "{first}_{last}_CoverLetter_Resume_{company}_{role}"
     date_format: str = "%B %-d, %Y"
     include_resume_default: bool = False
+    attach_resume_default: bool = False
     # Fields filled from here instead of by Claude, e.g. {"my_email": "me@x.com"}.
     static_fields: dict[str, str] = Field(default_factory=dict)
 
@@ -57,3 +61,16 @@ def load_resume() -> str | None:
 def save_resume(text: str) -> None:
     ensure_dirs()
     RESUME_PATH.write_text(text)
+
+
+def load_resume_pdf() -> bytes | None:
+    return RESUME_PDF_PATH.read_bytes() if RESUME_PDF_PATH.exists() else None
+
+
+def save_resume_pdf(data: bytes | None) -> None:
+    """Store the resume PDF, or remove a stale one when the new resume has no PDF form."""
+    ensure_dirs()
+    if data is None:
+        RESUME_PDF_PATH.unlink(missing_ok=True)
+    else:
+        RESUME_PDF_PATH.write_bytes(data)

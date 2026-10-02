@@ -11,6 +11,8 @@ import threading
 import zipfile
 from pathlib import Path
 
+from pypdf import PdfReader, PdfWriter
+
 from .storage import DATA_DIR, Settings
 
 _soffice_lock = threading.Lock()  # concurrent soffice instances on one profile fail
@@ -21,14 +23,16 @@ def safe_part(text: str) -> str:
     return text.strip("_")
 
 
-def build_filename(settings: Settings, company: str, role: str, ext: str = "pdf") -> str:
+def build_filename(settings: Settings, company: str, role: str, ext: str = "pdf",
+                   combined: bool = False) -> str:
     parts = {
         "first": safe_part(settings.first_name),
         "last": safe_part(settings.last_name),
         "company": safe_part(company),
         "role": safe_part(role),
     }
-    name = settings.filename_pattern.format(**parts)
+    pattern = settings.combined_filename_pattern if combined else settings.filename_pattern
+    name = pattern.format(**parts)
     name = re.sub(r"_+", "_", name).strip("_") or "CoverLetter"
     return f"{name}.{ext}"
 
@@ -57,6 +61,15 @@ def docx_to_pdf(docx_bytes: bytes) -> bytes:
         if not out.exists():
             raise RuntimeError(f"PDF conversion failed: {result.stderr or result.stdout}")
         return out.read_bytes()
+
+
+def merge_pdfs(*pdfs: bytes) -> bytes:
+    writer = PdfWriter()
+    for data in pdfs:
+        writer.append(PdfReader(io.BytesIO(data)))
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
 
 
 def zip_files(paths: list[Path]) -> bytes:

@@ -37,6 +37,8 @@ async function loadState() {
   $("#first-name").value = s.settings.first_name;
   $("#last-name").value = s.settings.last_name;
   $("#filename-pattern").value = s.settings.filename_pattern;
+  $("#combined-filename-pattern").value = s.settings.combined_filename_pattern;
+  setResumePdf(s.has_resume_pdf, s.settings.attach_resume_default);
   $("#static-fields").value = Object.entries(s.settings.static_fields).map(([k, v]) => `${k} = ${v}`).join("\n");
   $("#include-resume").checked = s.settings.include_resume_default;
   $("#resume-status").textContent = s.has_resume ? `Resume saved: “${s.resume_preview.slice(0, 80)}…”` : "No resume uploaded.";
@@ -58,6 +60,7 @@ $("#resume-file").addEventListener("change", async (e) => {
   try {
     const r = await (await api("/api/resume", { method: "POST", body: fd })).json();
     $("#resume-status").textContent = `Resume saved: “${r.resume_preview.slice(0, 80)}…”`;
+    setResumePdf(r.has_resume_pdf, $("#attach-resume").checked);
   } catch (err) { $("#resume-status").innerHTML = `<span class="error">${esc(err.message)}</span>`; }
 });
 
@@ -72,6 +75,8 @@ $("#save-settings").addEventListener("click", async () => {
     first_name: $("#first-name").value.trim(),
     last_name: $("#last-name").value.trim(),
     filename_pattern: $("#filename-pattern").value.trim(),
+    combined_filename_pattern: $("#combined-filename-pattern").value.trim(),
+    attach_resume_default: $("#attach-resume").checked,
     static_fields: staticFields,
     include_resume_default: $("#include-resume").checked,
   };
@@ -81,6 +86,17 @@ $("#save-settings").addEventListener("click", async () => {
     $("#settings-status").innerHTML = `<span class="ok">Saved.</span>`;
   } catch (err) { $("#settings-status").innerHTML = `<span class="error">${esc(err.message)}</span>`; }
 });
+
+function setResumePdf(available, checked) {
+  const box = $("#attach-resume");
+  box.disabled = !available;
+  box.checked = available && checked;
+  $("#attach-resume-label").title = available ? "" : "Upload your resume as a PDF or .docx in Setup to attach it.";
+  refreshFilenames();
+}
+const attachResume = () => $("#attach-resume").checked;
+const refreshFilenames = () => document.querySelectorAll("[data-filename]").forEach((el) => el.refresh());
+$("#attach-resume").addEventListener("change", refreshFilenames);
 
 // ------------------------------------------------------------------ jobs
 
@@ -188,12 +204,14 @@ function renderJob(job) {
   const status = (html) => { $("[data-status]", card).innerHTML = html; };
   const updateFilename = () => {
     const part = (t) => t.trim().replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-    const name = $("#filename-pattern").value
+    const pattern = attachResume() ? $("#combined-filename-pattern").value : $("#filename-pattern").value;
+    const name = pattern
       .replace("{first}", part($("#first-name").value)).replace("{last}", part($("#last-name").value))
       .replace("{company}", part($("[data-meta=company_short]", card).value))
       .replace("{role}", part($("[data-meta=role_short]", card).value)).replace(/_+/g, "_");
     $("[data-filename]", card).textContent = name + ".pdf";
   };
+  $("[data-filename]", card).refresh = updateFilename;
   updateFilename();
   card.querySelectorAll("[data-meta]").forEach((i) => i.addEventListener("input", updateFilename));
 
@@ -219,7 +237,7 @@ function renderJob(job) {
     e.target.disabled = true;
     status("Rendering…");
     try {
-      const blob = await (await api("/api/preview", json(job))).blob();
+      const blob = await (await api(`/api/preview?attach_resume=${attachResume()}`, json(job))).blob();
       $("[data-preview-pane]", card).innerHTML = `<iframe class="preview" src="${URL.createObjectURL(blob)}"></iframe>`;
       status("");
     } catch (err) { status(`<span class="error">${esc(err.message)}</span>`); }
@@ -231,7 +249,7 @@ function renderJob(job) {
     e.target.disabled = true;
     status("Exporting…");
     try {
-      const r = await (await api("/api/export", json({ jobs: [job] }))).json();
+      const r = await (await api("/api/export", json({ jobs: [job], attach_resume: attachResume() }))).json();
       const f = r.files[0];
       status(`<span class="ok">Saved</span> <a href="${f.url}" download>${esc(f.filename)}</a>`);
     } catch (err) { status(`<span class="error">${esc(err.message)}</span>`); }
@@ -247,7 +265,7 @@ $("#export-all").addEventListener("click", async (e) => {
   const st = $("#export-status");
   st.textContent = "Exporting…";
   try {
-    const r = await (await api("/api/export", json({ jobs }))).json();
+    const r = await (await api("/api/export", json({ jobs, attach_resume: attachResume() }))).json();
     st.innerHTML = `<span class="ok">Saved ${r.files.length} PDF(s) to ${esc(r.output_dir)}</span> · ` +
       r.files.map((f) => `<a href="${f.url}" download>${esc(f.filename)}</a>`).join(" · ") +
       (r.files.length > 1 ? ` · <a href="#" id="zip-link">Download all (.zip)</a>` : "");

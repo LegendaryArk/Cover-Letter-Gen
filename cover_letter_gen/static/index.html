@@ -34,6 +34,7 @@
       <label>First name <input id="first-name"></label>
       <label>Last name <input id="last-name"></label>
       <label class="grow">Filename pattern <input id="filename-pattern"></label>
+      <label class="grow">Filename pattern with resume attached <input id="combined-filename-pattern"></label>
     </div>
     <label class="block">Fixed fields (one per line, <code>name = value</code> — filled without Claude)
       <textarea id="static-fields" rows="3" placeholder="my_email = me@example.com&#10;my_phone = 555-123-4567"></textarea>
@@ -61,6 +62,7 @@
     <div class="row review-head">
       <h2>3. Review &amp; export</h2>
       <span class="grow"></span>
+      <label class="toggle" id="attach-resume-label"><input type="checkbox" id="attach-resume"> Attach resume after cover letter (one PDF)</label>
       <button id="export-all" class="primary">Export all PDFs</button>
     </div>
     <div id="export-status" class="muted small"></div>

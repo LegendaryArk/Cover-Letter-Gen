@@ -8,6 +8,7 @@ submission-ready PDFs named like `Noah_Sun_CoverLetter_Stripe_Software_Engineer_
   grounded in a quick web search on the company.
 - Several roles at the same company share one research pass, and each letter is tailored to its role.
 - You review and edit everything (or ask for a rewrite with a note) before exporting.
+- Optionally attach your resume after the cover letter and export both as a single PDF.
 
 ## Setup
 
@@ -53,6 +54,10 @@ panel lists every placeholder it found, so you can check they were all recognize
 3. **Review:** edit any field or sentence, click **Rewrite** (with an optional note) to redo one slot,
    then **Preview PDF**.
 4. **Export:** PDFs are saved to `output/` and can be downloaded one at a time or as a zip.
+   Tick **Attach resume after cover letter** to export one PDF per job with your resume pages
+   appended (named by the "with resume attached" pattern, e.g.
+   `Noah_Sun_CoverLetter_Resume_Stripe_Software_Engineer_Intern.pdf`). This needs the resume uploaded
+   as a PDF or .docx; a .docx is converted with LibreOffice, so a PDF keeps your exact layout.
 
 Your template, resume, and settings are stored locally in `data/` (gitignored).
 
