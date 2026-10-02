@@ -1,0 +1,24 @@
+[project]
+name = "cover-letter-gen"
+version = "0.1.0"
+description = "Fill a cover letter template from job descriptions with Claude and export PDFs"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=1.11",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "python-docx",
+    "pydantic>=2",
+    "python-dotenv",
+    "pypdf",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[tool.setuptools]
+packages = ["cover_letter_gen"]
+
+[tool.setuptools.package-data]
+cover_letter_gen = ["static/*"]

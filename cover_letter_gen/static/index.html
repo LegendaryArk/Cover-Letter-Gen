@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cover Letter Generator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Cover Letter Generator</h1>
+    <p class="muted">Template + job descriptions → tailored, submission-ready PDFs.</p>
+  </header>
+
+  <section class="card" id="setup">
+    <h2>1. Setup</h2>
+    <div class="grid">
+      <div>
+        <h3>Template (.docx)</h3>
+        <p class="muted small">In Google Docs: File → Download → Microsoft Word. Use <code>{{company}}</code> for fields and <code>{{? guidance}}</code> for sentences Claude writes.</p>
+        <input type="file" id="template-file" accept=".docx">
+        <div id="slots"></div>
+      </div>
+      <div>
+        <h3>Resume (optional)</h3>
+        <p class="muted small">PDF, .docx, or text. Stored locally; only sent when the toggle below is on.</p>
+        <input type="file" id="resume-file" accept=".pdf,.docx,.txt,.md">
+        <p id="resume-status" class="muted small"></p>
+      </div>
+    </div>
+    <h3>Your details</h3>
+    <div class="row">
+      <label>First name <input id="first-name"></label>
+      <label>Last name <input id="last-name"></label>
+      <label class="grow">Filename pattern <input id="filename-pattern"></label>
+    </div>
+    <label class="block">Fixed fields (one per line, <code>name = value</code> — filled without Claude)
+      <textarea id="static-fields" rows="3" placeholder="my_email = me@example.com&#10;my_phone = 555-123-4567"></textarea>
+    </label>
+    <div class="row">
+      <button id="save-settings">Save details</button>
+      <span id="settings-status" class="muted small"></span>
+    </div>
+  </section>
+
+  <section class="card" id="jobs-section">
+    <h2>2. Job descriptions</h2>
+    <p class="muted small">One box per position. Several roles at the same company share research and get letters that differ by role.</p>
+    <div id="jd-list"></div>
+    <div class="row">
+      <button id="add-jd" class="secondary">+ Add another job</button>
+      <label class="toggle"><input type="checkbox" id="include-resume"> Include resume as context</label>
+      <span class="grow"></span>
+      <button id="generate" class="primary">Generate letters</button>
+    </div>
+    <pre id="progress" class="progress" hidden></pre>
+  </section>
+
+  <section id="review" hidden>
+    <div class="row review-head">
+      <h2>3. Review &amp; export</h2>
+      <span class="grow"></span>
+      <button id="export-all" class="primary">Export all PDFs</button>
+    </div>
+    <div id="export-status" class="muted small"></div>
+    <div id="results"></div>
+  </section>
+</main>
+
+<template id="jd-tpl">
+  <div class="jd">
+    <textarea rows="7" placeholder="Paste the full job description…"></textarea>
+    <button class="remove link" title="Remove">Remove</button>
+  </div>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

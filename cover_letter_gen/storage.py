@@ -1,0 +1,59 @@
+"""Local persistence: template, resume, and settings live in ./data."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
+ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT / "data"
+OUTPUT_DIR = ROOT / "output"
+TEMPLATE_PATH = DATA_DIR / "template.docx"
+RESUME_PATH = DATA_DIR / "resume.txt"
+SETTINGS_PATH = DATA_DIR / "settings.json"
+
+
+class Settings(BaseModel):
+    first_name: str = ""
+    last_name: str = ""
+    filename_pattern: str = "{first}_{last}_CoverLetter_{company}_{role}"
+    date_format: str = "%B %-d, %Y"
+    include_resume_default: bool = False
+    # Fields filled from here instead of by Claude, e.g. {"my_email": "me@x.com"}.
+    static_fields: dict[str, str] = Field(default_factory=dict)
+
+
+def ensure_dirs() -> None:
+    DATA_DIR.mkdir(exist_ok=True)
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
+
+def load_settings() -> Settings:
+    if SETTINGS_PATH.exists():
+        return Settings.model_validate_json(SETTINGS_PATH.read_text())
+    return Settings()
+
+
+def save_settings(settings: Settings) -> None:
+    ensure_dirs()
+    SETTINGS_PATH.write_text(settings.model_dump_json(indent=2))
+
+
+def load_template() -> bytes | None:
+    return TEMPLATE_PATH.read_bytes() if TEMPLATE_PATH.exists() else None
+
+
+def save_template(data: bytes) -> None:
+    ensure_dirs()
+    TEMPLATE_PATH.write_bytes(data)
+
+
+def load_resume() -> str | None:
+    return RESUME_PATH.read_text() if RESUME_PATH.exists() else None
+
+
+def save_resume(text: str) -> None:
+    ensure_dirs()
+    RESUME_PATH.write_text(text)
